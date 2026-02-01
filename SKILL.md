@@ -6,25 +6,39 @@ allowed-tools: playwright, turndown, turndown-plugin-gfm, fs
 
 # Web Scraping with Playwright
 
+🚨 **FIRST-TIME SETUP REQUIRED** 🚨
+Before using this skill, run: `./scripts/ensure-setup.sh` (from the skill directory)
+
 ## Prerequisites
 
-### Required Packages
+### Setup Instructions
+**IMPORTANT:** Before using this skill for the FIRST time, run the setup script:
+
 ```bash
-# Install Playwright
-npm install playwright
+./scripts/ensure-setup.sh
+```
 
-# Install browser binaries (only needed once)
+This will automatically:
+- Install required npm packages (playwright, turndown, turndown-plugin-gfm)
+- Download Chromium browser binaries
+- Verify the installation
+
+**Manual Setup (if needed):**
+```bash
+npm install
 npx playwright install chromium
-
-# Install HTML to Markdown converter
-npm install turndown turndown-plugin-gfm
+npm test  # Verify installation
 ```
 
 ## Basic Usage Pattern
 
+**EXECUTION NOTE:** All JavaScript code examples must be executed from this skill's directory to ensure Node.js can find the installed packages.
+
 ### Single Page Scraping
 
 Replace `https://example.com` to destination url
+
+**Before running:** Ensure you're in the skill directory (where package.json is located).
 
 ```javascript
 const { chromium } = require('playwright');

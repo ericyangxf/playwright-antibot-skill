@@ -36,8 +36,6 @@ npm test  # Verify installation
 
 ### Single Page Scraping
 
-Replace `https://example.com` to destination url
-
 **Before running:** Ensure you're in the skill directory (where package.json is located).
 
 ```javascript
@@ -57,19 +55,56 @@ const turndownService = new TurndownService({
 turndownService.use(gfm);  // GitHub Flavored Markdown (tables support)
 
 (async () => {
-  // Launch browser
+  // Launch browser with anti-bot detection bypassing
   const browser = await chromium.launch({
-    headless: true  // Set to false for debugging
+    headless: true,  // Set to false for debugging
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--disable-dev-shm-usage',
+      '--no-sandbox'
+    ]
   });
-  
-  const page = await browser.newPage();
-  
-  // Navigate to URL
-  await page.goto('https://example.com', {
-    waitUntil: 'networkidle',  // Wait until network is idle
-    timeout: 30000
+
+  // Create context with realistic browser fingerprint
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    viewport: { width: 1920, height: 1080 },
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    extraHTTPHeaders: {
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+    }
   });
-  
+
+  const page = await context.newPage();
+
+  // Hide automation indicators
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+  });
+
+  // Navigate to URL with fallback strategy
+  try {
+    await page.goto('https://example.com', {
+      waitUntil: 'load',  // Use 'load' for reliability
+      timeout: 60000
+    });
+  } catch (error) {
+    // If 'load' times out, try with 'domcontentloaded' as final fallback
+    if (error.message.includes('Timeout')) {
+      console.log('⚠ Load timeout, retrying with domcontentloaded...');
+      await page.goto('https://example.com', {
+        waitUntil: 'domcontentloaded',
+        timeout: 30000
+      });
+    } else {
+      throw error;
+    }
+  }
+
   // Extract main content HTML
   const html = await page.evaluate(() => {
     // Try common content selectors
@@ -110,8 +145,6 @@ ${markdown}`;
 
 ### Multiple Pages Scraping
 
-Replace `https://example.com/*` to destination url
-
 ```javascript
 const { chromium } = require('playwright');
 const TurndownService = require('turndown');
@@ -125,24 +158,74 @@ const turndownService = new TurndownService({
 turndownService.use(gfm);
 
 (async () => {
+  // Navigate to URLs
   const urls = [
     'https://example.com/page1',
     'https://example.com/page2',
     'https://example.com/page3'
   ];
-  
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
-  
+
+  // Launch browser with anti-bot detection bypassing
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--disable-dev-shm-usage',
+      '--no-sandbox'
+    ]
+  });
+
+  // Create context with realistic browser fingerprint
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    viewport: { width: 1920, height: 1080 },
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    extraHTTPHeaders: {
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+    }
+  });
+
+  const page = await context.newPage();
+
+  // Hide automation indicators
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+  });
+
+  // Warm up the browser to prevent first URL timeout
+  if (urls.length > 0) {
+    try {
+      const firstDomain = new URL(urls[0]).origin;
+      await page.goto(firstDomain, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+    } catch (e) {}
+  }
+
   for (const url of urls) {
     console.log(`Scraping: ${url}`);
-    
+
     try {
-      await page.goto(url, { 
-        waitUntil: 'networkidle',
-        timeout: 30000 
-      });
-      
+      // Navigate with fallback strategy
+      try {
+        await page.goto(url, {
+          waitUntil: 'load',  // Use 'load' for reliability
+          timeout: 60000
+        });
+      } catch (err) {
+        if (err.message.includes('Timeout')) {
+          console.log(`  ⚠ Load timeout, retrying with 'domcontentloaded'...`);
+          await page.goto(url, {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+          });
+        } else {
+          throw err;
+        }
+      }
+
       // Extract content
       const html = await page.evaluate(() => {
         const main = document.querySelector('article, main, .content');
@@ -175,38 +258,41 @@ turndownService.use(gfm);
 
 ## Advanced Techniques
 
-### Bypassing Anti-Bot Detection
+### Understanding `waitUntil` Options
 
-```javascript
-const browser = await chromium.launch({
-  headless: true,
-  args: [
-    '--disable-blink-features=AutomationControlled',
-    '--disable-dev-shm-usage',
-    '--no-sandbox'
-  ]
-});
+The `waitUntil` parameter in `page.goto()` controls when the navigation is considered complete:
 
-const context = await browser.newContext({
-  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  viewport: { width: 1920, height: 1080 },
-  locale: 'en-US',
-  timezoneId: 'America/New_York',
-  extraHTTPHeaders: {
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-  }
-});
+| Option | When it completes | Pros | Cons | Use when |
+|--------|------------------|------|------|----------|
+| **`'load'`** | When the `load` event fires | ✅ Fast and reliable<br>✅ Works with most sites<br>✅ Rarely times out | ⚠️ May not wait for all dynamic content | **Default choice** - Use for most scraping tasks |
+| **`'domcontentloaded'`** | When the DOM is loaded | ✅ Fastest option<br>✅ Good for static content | ⚠️ JavaScript may not have executed<br>⚠️ Images/stylesheets may not load | Early scraping, extracting structure |
+| **`'networkidle'`** | When no network connections for 500ms | ✅ Ensures all content loaded<br>✅ Good for complex SPAs | ❌ **Often times out**<br>❌ Fails with persistent connections<br>❌ Slow | Only when 'load' misses content |
 
-const page = await context.newPage();
+**⚠️ Common Pitfall:** `'networkidle'` frequently times out on the first URL due to:
+- Cold-start connection delays
+- Analytics/tracking scripts keeping connections open
+- WebSocket connections
+- Polling/long-running requests
 
-// Hide automation indicators
-await page.addInitScript(() => {
-  Object.defineProperty(navigator, 'webdriver', { get: () => false });
-  Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-  Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-});
-```
+**Best Practice:**
+1. Use `'load'` as your default - it works 95% of the time
+2. Only use `'networkidle'` if you observe missing content with `'load'`
+3. If using `'networkidle'`, always implement the fallback pattern shown in "Multiple Pages Scraping"
+
+### Anti-Bot Detection Bypassing (Already Enabled by Default)
+
+**Note:** The basic scraping examples above already include anti-bot detection bypassing. These techniques are built into the default configuration and include:
+
+- **Browser launch args**: Disables automation flags that bots typically have
+- **Realistic user agent**: Uses a current Chrome user agent string
+- **Browser fingerprint**: Sets realistic viewport, locale, timezone, and HTTP headers
+- **Navigator properties**: Hides webdriver flag and sets realistic plugin/language values
+
+If you encounter sites with more sophisticated bot detection, you may need additional techniques such as:
+- Using residential proxies
+- Adding random mouse movements: `await page.mouse.move(100, 200)`
+- Adding random delays between actions
+- Rotating user agents for each request
 
 ### Handling Dynamic Content
 
@@ -323,10 +409,10 @@ async function scrapeWithRetry(url, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Attempt ${attempt}/${maxRetries}: ${url}`);
-      
-      await page.goto(url, { 
-        waitUntil: 'networkidle',
-        timeout: 30000 
+
+      await page.goto(url, {
+        waitUntil: 'load',  // Use 'load' for reliability
+        timeout: 30000
       });
       
       const html = await page.evaluate(() => {
@@ -417,7 +503,7 @@ const promises = urls.map(url => {
     const page = await browser.newPage();
     
     try {
-      await page.goto(url, { waitUntil: 'networkidle' });
+      await page.goto(url, { waitUntil: 'load' });
       // Scraping logic...
       return result;
     } finally {
@@ -439,7 +525,7 @@ try {
   const scrapeUrl = async (url) => {
     const page = await browser.newPage();
     try {
-      await page.goto(url, { waitUntil: 'networkidle' });
+      await page.goto(url, { waitUntil: 'load' });
       // Extract content...
       return content;
     } finally {
@@ -527,12 +613,28 @@ async function scrapeDocumentation(urls, outputDir = './scraped-docs') {
   });
   
   const page = await context.newPage();
-  
+
   // Anti-detection
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => false });
   });
-  
+
+  // IMPORTANT: Warm up the browser with a simple navigation first
+  // This prevents the first real URL from timing out due to cold-start delays
+  try {
+    await page.goto('about:blank', { timeout: 5000 });
+    // Optional: navigate to the domain to establish connection
+    if (urls.length > 0) {
+      const firstDomain = new URL(urls[0]).origin;
+      await page.goto(firstDomain, {
+        waitUntil: 'domcontentloaded',
+        timeout: 10000
+      }).catch(() => {}); // Ignore errors, this is just a warm-up
+    }
+  } catch (e) {
+    // Warm-up failed, but continue anyway
+  }
+
   const results = [];
   
   for (let i = 0; i < urls.length; i++) {
@@ -540,12 +642,24 @@ async function scrapeDocumentation(urls, outputDir = './scraped-docs') {
     console.log(`\n[${i + 1}/${urls.length}] Scraping: ${url}`);
     
     try {
-      // Navigate
-      await page.goto(url, { 
-        waitUntil: 'networkidle',
-        timeout: 30000 
-      });
-      
+      // Navigate with fallback strategy
+      try {
+        await page.goto(url, {
+          waitUntil: 'load',  // Use 'load' for reliability
+          timeout: 30000
+        });
+      } catch (error) {
+        if (error.message.includes('Timeout')) {
+          console.log('  ⚠ Load timeout, retrying with domcontentloaded...');
+          await page.goto(url, {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+          });
+        } else {
+          throw error;
+        }
+      }
+
       // Wait for content
       await page.waitForSelector('article, main, .content', { timeout: 10000 });
       
@@ -690,8 +804,9 @@ chmod +x scraper.js
 
 | Problem | Solution |
 |---------|----------|
+| **First URL timeouts but retries succeed** | Cold-start issue: add a warm-up navigation to `about:blank` or the target domain before scraping. Use `waitUntil: 'load'` instead of `'networkidle'` as fallback. |
 | **TimeoutError** | Increase timeout, check network, or use `waitUntil: 'domcontentloaded'` |
-| **404/403 errors** | Enable anti-detection features, use realistic user agent |
+| **404/403 errors** | Use additional techniques for Anti-Bot Detection Bypassing |
 | **Empty content** | Adjust selectors, wait for JavaScript rendering |
 | **Slow performance** | Reuse browser context, enable request interception to block images/css |
 | **Memory issues** | Close pages after use, limit concurrent operations |
@@ -703,7 +818,3 @@ chmod +x scraper.js
 - **Playwright Docs:** https://playwright.dev/docs/intro
 - **Turndown Docs:** https://github.com/mixmark-io/turndown
 - **Anti-Detection Guide:** https://playwright.dev/docs/emulation
-
----
-
-**Remember:** This skill is for legitimate use cases only. Always respect website terms of service, rate limits, and copyright. Use responsibly.

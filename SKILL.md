@@ -30,555 +30,9 @@ npx playwright install chromium
 npm test  # Verify installation
 ```
 
-## Basic Usage Pattern
+**EXECUTION NOTE:** All JavaScript code examples must be executed from this skill's directory (where package.json is located) to ensure Node.js can find the installed packages.
 
-**EXECUTION NOTE:** All JavaScript code examples must be executed from this skill's directory to ensure Node.js can find the installed packages.
-
-### Single Page Scraping
-
-**Before running:** Ensure you're in the skill directory (where package.json is located).
-
-```javascript
-const { chromium } = require('playwright');
-const TurndownService = require('turndown');
-const { gfm } = require('turndown-plugin-gfm');
-const fs = require('fs');
-
-// Configure Markdown converter
-const turndownService = new TurndownService({
-  headingStyle: 'atx',
-  hr: '---',
-  bulletListMarker: '-',
-  codeBlockStyle: 'fenced',
-  emDelimiter: '_'
-});
-turndownService.use(gfm);  // GitHub Flavored Markdown (tables support)
-
-(async () => {
-  // Launch browser with anti-bot detection bypassing
-  const browser = await chromium.launch({
-    headless: true,  // Set to false for debugging
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--disable-dev-shm-usage',
-      '--no-sandbox'
-    ]
-  });
-
-  // Create context with realistic browser fingerprint
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    viewport: { width: 1920, height: 1080 },
-    locale: 'en-US',
-    timezoneId: 'America/New_York',
-    extraHTTPHeaders: {
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-    }
-  });
-
-  const page = await context.newPage();
-
-  // Hide automation indicators
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => false });
-    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-  });
-
-  // Navigate to URL with fallback strategy
-  try {
-    await page.goto('https://example.com', {
-      waitUntil: 'load',  // Use 'load' for reliability
-      timeout: 60000
-    });
-  } catch (error) {
-    // If 'load' times out, try with 'domcontentloaded' as final fallback
-    if (error.message.includes('Timeout')) {
-      console.log('⚠ Load timeout, retrying with domcontentloaded...');
-      await page.goto('https://example.com', {
-        waitUntil: 'domcontentloaded',
-        timeout: 30000
-      });
-    } else {
-      throw error;
-    }
-  }
-
-  // Extract main content HTML
-  const html = await page.evaluate(() => {
-    // Try common content selectors
-    const selectors = ['article', 'main', '.content', '.documentation', '#content'];
-    for (const selector of selectors) {
-      const element = document.querySelector(selector);
-      if (element) return element.innerHTML;
-    }
-    // Fallback to body
-    return document.body.innerHTML;
-  });
-  
-  // Get page metadata
-  const metadata = await page.evaluate(() => ({
-    title: document.title,
-    url: window.location.href
-  }));
-  
-  // Convert to Markdown
-  const markdown = turndownService.turndown(html);
-  
-  // Format output with metadata
-  const output = `# ${metadata.title}
-
-> Source: ${metadata.url}
-> Scraped: ${new Date().toISOString()}
-
-${markdown}`;
-  
-  // Save to file
-  const filename = 'scraped-content.md';
-  fs.writeFileSync(filename, output);
-  console.log(`✓ Saved to ${filename}`);
-  
-  await browser.close();
-})();
-```
-
-### Multiple Pages Scraping
-
-```javascript
-const { chromium } = require('playwright');
-const TurndownService = require('turndown');
-const { gfm } = require('turndown-plugin-gfm');
-const fs = require('fs');
-
-const turndownService = new TurndownService({
-  headingStyle: 'atx',
-  codeBlockStyle: 'fenced'
-});
-turndownService.use(gfm);
-
-(async () => {
-  // Navigate to URLs
-  const urls = [
-    'https://example.com/page1',
-    'https://example.com/page2',
-    'https://example.com/page3'
-  ];
-
-  // Launch browser with anti-bot detection bypassing
-  const browser = await chromium.launch({
-    headless: true,
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--disable-dev-shm-usage',
-      '--no-sandbox'
-    ]
-  });
-
-  // Create context with realistic browser fingerprint
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    viewport: { width: 1920, height: 1080 },
-    locale: 'en-US',
-    timezoneId: 'America/New_York',
-    extraHTTPHeaders: {
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-    }
-  });
-
-  const page = await context.newPage();
-
-  // Hide automation indicators
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => false });
-    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-  });
-
-  // Warm up the browser to prevent first URL timeout
-  if (urls.length > 0) {
-    try {
-      const firstDomain = new URL(urls[0]).origin;
-      await page.goto(firstDomain, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
-    } catch (e) {}
-  }
-
-  for (const url of urls) {
-    console.log(`Scraping: ${url}`);
-
-    try {
-      // Navigate with fallback strategy
-      try {
-        await page.goto(url, {
-          waitUntil: 'load',  // Use 'load' for reliability
-          timeout: 60000
-        });
-      } catch (err) {
-        if (err.message.includes('Timeout')) {
-          console.log(`  ⚠ Load timeout, retrying with 'domcontentloaded'...`);
-          await page.goto(url, {
-            waitUntil: 'domcontentloaded',
-            timeout: 30000
-          });
-        } else {
-          throw err;
-        }
-      }
-
-      // Extract content
-      const html = await page.evaluate(() => {
-        const main = document.querySelector('article, main, .content');
-        return main ? main.innerHTML : document.body.innerHTML;
-      });
-      
-      const title = await page.title();
-      const markdown = turndownService.turndown(html);
-      
-      // Generate filename from URL
-      const filename = url.split('/').filter(Boolean).slice(-2).join('-') + '.md';
-      
-      const output = `# ${title}\n\n> Source: ${url}\n\n${markdown}`;
-      fs.writeFileSync(filename, output);
-      
-      console.log(`✓ Saved: ${filename}`);
-      
-      // Polite delay between requests
-      await page.waitForTimeout(1000 + Math.random() * 2000);
-      
-    } catch (error) {
-      console.error(`✗ Failed to scrape ${url}:`, error.message);
-    }
-  }
-  
-  await browser.close();
-  console.log('All done!');
-})();
-```
-
-## Advanced Techniques
-
-### Understanding `waitUntil` Options
-
-The `waitUntil` parameter in `page.goto()` controls when the navigation is considered complete:
-
-| Option | When it completes | Pros | Cons | Use when |
-|--------|------------------|------|------|----------|
-| **`'load'`** | When the `load` event fires | ✅ Fast and reliable<br>✅ Works with most sites<br>✅ Rarely times out | ⚠️ May not wait for all dynamic content | **Default choice** - Use for most scraping tasks |
-| **`'domcontentloaded'`** | When the DOM is loaded | ✅ Fastest option<br>✅ Good for static content | ⚠️ JavaScript may not have executed<br>⚠️ Images/stylesheets may not load | Early scraping, extracting structure |
-| **`'networkidle'`** | When no network connections for 500ms | ✅ Ensures all content loaded<br>✅ Good for complex SPAs | ❌ **Often times out**<br>❌ Fails with persistent connections<br>❌ Slow | Only when 'load' misses content |
-
-**⚠️ Common Pitfall:** `'networkidle'` frequently times out on the first URL due to:
-- Cold-start connection delays
-- Analytics/tracking scripts keeping connections open
-- WebSocket connections
-- Polling/long-running requests
-
-**Best Practice:**
-1. Use `'load'` as your default - it works 95% of the time
-2. Only use `'networkidle'` if you observe missing content with `'load'`
-3. If using `'networkidle'`, always implement the fallback pattern shown in "Multiple Pages Scraping"
-
-### Anti-Bot Detection Bypassing (Already Enabled by Default)
-
-**Note:** The basic scraping examples above already include anti-bot detection bypassing. These techniques are built into the default configuration and include:
-
-- **Browser launch args**: Disables automation flags that bots typically have
-- **Realistic user agent**: Uses a current Chrome user agent string
-- **Browser fingerprint**: Sets realistic viewport, locale, timezone, and HTTP headers
-- **Navigator properties**: Hides webdriver flag and sets realistic plugin/language values
-
-If you encounter sites with more sophisticated bot detection, you may need additional techniques such as:
-- Using residential proxies
-- Adding random mouse movements: `await page.mouse.move(100, 200)`
-- Adding random delays between actions
-- Rotating user agents for each request
-
-### Handling Dynamic Content
-
-```javascript
-// Wait for specific selectors
-await page.waitForSelector('.article-content', { timeout: 10000 });
-
-// Wait for network to be idle
-await page.waitForLoadState('networkidle');
-
-// Wait for custom condition
-await page.waitForFunction(() => {
-  return document.querySelectorAll('.loaded-item').length > 5;
-}, { timeout: 10000 });
-
-// Scroll to load lazy content
-await page.evaluate(() => {
-  window.scrollTo(0, document.body.scrollHeight);
-});
-await page.waitForTimeout(2000);
-```
-
-### Handling Authentication
-
-```javascript
-// For basic auth
-const page = await context.newPage();
-await page.goto('https://username:password@example.com');
-
-// For form-based login
-await page.goto('https://example.com/login');
-await page.fill('#username', 'your-username');
-await page.fill('#password', 'your-password');
-await page.click('button[type="submit"]');
-await page.waitForNavigation();
-
-// For cookie-based auth
-await context.addCookies([
-  {
-    name: 'session',
-    value: 'your-session-token',
-    domain: 'example.com',
-    path: '/'
-  }
-]);
-```
-
-### Custom Content Selectors
-
-```javascript
-// Define custom selectors for specific sites
-const siteConfigs = {
-  'docs.coveo.com': {
-    contentSelector: '.documentation-content',
-    excludeSelectors: ['.sidebar', '.navigation', '.footer']
-  },
-  'developer.mozilla.org': {
-    contentSelector: 'article',
-    excludeSelectors: ['.document-toc', '.language-menu']
-  }
-};
-
-const domain = new URL(url).hostname;
-const config = siteConfigs[domain] || { contentSelector: 'article, main' };
-
-// Remove unwanted elements
-if (config.excludeSelectors) {
-  await page.evaluate((selectors) => {
-    selectors.forEach(selector => {
-      document.querySelectorAll(selector).forEach(el => el.remove());
-    });
-  }, config.excludeSelectors);
-}
-
-// Extract content
-const html = await page.evaluate((selector) => {
-  const element = document.querySelector(selector);
-  return element ? element.innerHTML : document.body.innerHTML;
-}, config.contentSelector);
-```
-
-### Extracting Structured Data
-
-```javascript
-// Extract tables separately
-const tables = await page.evaluate(() => {
-  return Array.from(document.querySelectorAll('table')).map((table, index) => {
-    const headers = Array.from(table.querySelectorAll('th')).map(th => th.innerText.trim());
-    const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr => {
-      return Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim());
-    });
-    return { index, headers, rows };
-  });
-});
-
-// Save tables as JSON
-fs.writeFileSync('tables.json', JSON.stringify(tables, null, 2));
-
-// Extract code blocks
-const codeBlocks = await page.evaluate(() => {
-  return Array.from(document.querySelectorAll('pre code, .code-block')).map(block => ({
-    language: block.className.match(/language-(\w+)/)?.[1] || 'text',
-    code: block.innerText
-  }));
-});
-```
-
-## Error Handling
-
-### Robust Scraping with Retries
-
-```javascript
-async function scrapeWithRetry(url, maxRetries = 3) {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`Attempt ${attempt}/${maxRetries}: ${url}`);
-
-      await page.goto(url, {
-        waitUntil: 'load',  // Use 'load' for reliability
-        timeout: 30000
-      });
-      
-      const html = await page.evaluate(() => {
-        const main = document.querySelector('article, main');
-        return main ? main.innerHTML : document.body.innerHTML;
-      });
-      
-      return html;
-      
-    } catch (error) {
-      console.error(`Attempt ${attempt} failed:`, error.message);
-      
-      if (attempt === maxRetries) {
-        throw new Error(`Failed after ${maxRetries} attempts: ${error.message}`);
-      }
-      
-      // Exponential backoff
-      await page.waitForTimeout(1000 * Math.pow(2, attempt));
-    }
-  }
-}
-```
-
-### Comprehensive Error Handling
-
-```javascript
-(async () => {
-  let browser;
-  try {
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    
-    // Set timeout handler
-    page.setDefaultTimeout(30000);
-    
-    // Handle navigation errors
-    page.on('response', response => {
-      if (response.status() >= 400) {
-        console.warn(`HTTP ${response.status()}: ${response.url()}`);
-      }
-    });
-    
-    await page.goto(url);
-    
-    // Check if content exists
-    const hasContent = await page.evaluate(() => {
-      return document.body.innerText.trim().length > 100;
-    });
-    
-    if (!hasContent) {
-      throw new Error('Page appears to be empty or blocked');
-    }
-    
-    // Continue with scraping...
-    
-  } catch (error) {
-    console.error('Scraping failed:', error.message);
-    
-    if (error.message.includes('timeout')) {
-      console.log('Suggestion: Try increasing timeout or check network');
-    } else if (error.message.includes('404')) {
-      console.log('Suggestion: Verify URL is correct');
-    } else if (error.message.includes('blocked')) {
-      console.log('Suggestion: Try with headless: false or adjust anti-bot settings');
-    }
-    
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-  }
-})();
-```
-
-## Performance Optimization
-
-### Batch Processing with Concurrency
-
-```javascript
-const pLimit = require('p-limit');  // npm install p-limit
-const limit = pLimit(3);  // Max 3 concurrent requests
-
-const urls = [...];  // Your URL list
-
-const promises = urls.map(url => {
-  return limit(async () => {
-    const browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    
-    try {
-      await page.goto(url, { waitUntil: 'load' });
-      // Scraping logic...
-      return result;
-    } finally {
-      await browser.close();
-    }
-  });
-});
-
-const results = await Promise.all(promises);
-```
-
-### Reusing Browser Context
-
-```javascript
-// More efficient for multiple pages
-const browser = await chromium.launch({ headless: true });
-
-try {
-  const scrapeUrl = async (url) => {
-    const page = await browser.newPage();
-    try {
-      await page.goto(url, { waitUntil: 'load' });
-      // Extract content...
-      return content;
-    } finally {
-      await page.close();  // Close page, not browser
-    }
-  };
-  
-  for (const url of urls) {
-    await scrapeUrl(url);
-  }
-  
-} finally {
-  await browser.close();  // Close browser once at the end
-}
-```
-
-## Debugging
-
-### Visual Debugging
-
-```javascript
-const browser = await chromium.launch({
-  headless: false,  // See the browser
-  slowMo: 500       // Slow down actions by 500ms
-});
-
-// Take screenshots at key points
-await page.screenshot({ path: 'before-scrape.png' });
-
-// After extraction
-await page.screenshot({ path: 'after-scrape.png', fullPage: true });
-```
-
-### Logging
-
-```javascript
-// Enable verbose logging
-page.on('console', msg => console.log('PAGE LOG:', msg.text()));
-page.on('pageerror', error => console.error('PAGE ERROR:', error));
-page.on('requestfailed', request => {
-  console.error('REQUEST FAILED:', request.url(), request.failure().errorText);
-});
-
-// Log network activity
-page.on('request', request => {
-  console.log('→', request.method(), request.url());
-});
-page.on('response', response => {
-  console.log('←', response.status(), response.url());
-});
-```
-
-## Complete Example: Documentation Scraper
+## Web Pages Scraping and save as Markdown
 
 ```javascript
 #!/usr/bin/env node
@@ -772,6 +226,176 @@ if (require.main === module) {
 module.exports = { scrapeDocumentation };
 ```
 
+## Advanced Techniques
+
+### Understanding `waitUntil` Options
+
+The `waitUntil` parameter in `page.goto()` controls when the navigation is considered complete:
+
+| Option | When it completes | Pros | Cons | Use when |
+|--------|------------------|------|------|----------|
+| **`'load'`** | When the `load` event fires | ✅ Fast and reliable<br>✅ Works with most sites<br>✅ Rarely times out | ⚠️ May not wait for all dynamic content | **Default choice** - Use for most scraping tasks |
+| **`'domcontentloaded'`** | When the DOM is loaded | ✅ Fastest option<br>✅ Good for static content | ⚠️ JavaScript may not have executed<br>⚠️ Images/stylesheets may not load | Early scraping, extracting structure |
+| **`'networkidle'`** | When no network connections for 500ms | ✅ Ensures all content loaded<br>✅ Good for complex SPAs | ❌ **Often times out**<br>❌ Fails with persistent connections<br>❌ Slow | Only when 'load' misses content |
+
+**⚠️ Common Pitfall:** `'networkidle'` frequently times out on the first URL due to:
+- Cold-start connection delays
+- Analytics/tracking scripts keeping connections open
+- WebSocket connections
+- Polling/long-running requests
+
+**Best Practice:**
+1. Use `'load'` as your default - it works 95% of the time
+2. Only use `'networkidle'` if you observe missing content with `'load'`
+3. If using `'networkidle'`, always implement the fallback pattern shown in "Multiple Pages Scraping"
+
+### Anti-Bot Detection Bypassing (Already Enabled by Default)
+
+**Note:** The basic scraping examples above already include anti-bot detection bypassing. These techniques are built into the default configuration and include:
+
+- **Browser launch args**: Disables automation flags that bots typically have
+- **Realistic user agent**: Uses a current Chrome user agent string
+- **Browser fingerprint**: Sets realistic viewport, locale, timezone, and HTTP headers
+- **Navigator properties**: Hides webdriver flag and sets realistic plugin/language values
+
+If you encounter sites with more sophisticated bot detection, you may need additional techniques such as:
+- Using residential proxies
+- Adding random mouse movements: `await page.mouse.move(100, 200)`
+- Adding random delays between actions
+- Rotating user agents for each request
+
+### Handling Dynamic Content
+
+```javascript
+// Wait for specific selectors
+await page.waitForSelector('.article-content', { timeout: 10000 });
+
+// Wait for network to be idle
+await page.waitForLoadState('networkidle');
+
+// Wait for custom condition
+await page.waitForFunction(() => {
+  return document.querySelectorAll('.loaded-item').length > 5;
+}, { timeout: 10000 });
+
+// Scroll to load lazy content
+await page.evaluate(() => {
+  window.scrollTo(0, document.body.scrollHeight);
+});
+await page.waitForTimeout(2000);
+```
+
+### Custom Content Selectors
+
+```javascript
+// Define custom selectors for specific sites
+const siteConfigs = {
+  'docs.coveo.com': {
+    contentSelector: '.documentation-content',
+    excludeSelectors: ['.sidebar', '.navigation', '.footer']
+  },
+  'developer.mozilla.org': {
+    contentSelector: 'article',
+    excludeSelectors: ['.document-toc', '.language-menu']
+  }
+};
+
+const domain = new URL(url).hostname;
+const config = siteConfigs[domain] || { contentSelector: 'article, main' };
+
+// Remove unwanted elements
+if (config.excludeSelectors) {
+  await page.evaluate((selectors) => {
+    selectors.forEach(selector => {
+      document.querySelectorAll(selector).forEach(el => el.remove());
+    });
+  }, config.excludeSelectors);
+}
+
+// Extract content
+const html = await page.evaluate((selector) => {
+  const element = document.querySelector(selector);
+  return element ? element.innerHTML : document.body.innerHTML;
+}, config.contentSelector);
+```
+
+### Extracting Structured Data
+
+```javascript
+// Extract tables separately
+const tables = await page.evaluate(() => {
+  return Array.from(document.querySelectorAll('table')).map((table, index) => {
+    const headers = Array.from(table.querySelectorAll('th')).map(th => th.innerText.trim());
+    const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr => {
+      return Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim());
+    });
+    return { index, headers, rows };
+  });
+});
+
+// Save tables as JSON
+fs.writeFileSync('tables.json', JSON.stringify(tables, null, 2));
+
+// Extract code blocks
+const codeBlocks = await page.evaluate(() => {
+  return Array.from(document.querySelectorAll('pre code, .code-block')).map(block => ({
+    language: block.className.match(/language-(\w+)/)?.[1] || 'text',
+    code: block.innerText
+  }));
+});
+```
+
+## Error Handling
+
+```javascript
+(async () => {
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    
+    // Set timeout handler
+    page.setDefaultTimeout(30000);
+    
+    // Handle navigation errors
+    page.on('response', response => {
+      if (response.status() >= 400) {
+        console.warn(`HTTP ${response.status()}: ${response.url()}`);
+      }
+    });
+    
+    await page.goto(url);
+    
+    // Check if content exists
+    const hasContent = await page.evaluate(() => {
+      return document.body.innerText.trim().length > 100;
+    });
+    
+    if (!hasContent) {
+      throw new Error('Page appears to be empty or blocked');
+    }
+    
+    // Continue with scraping...
+    
+  } catch (error) {
+    console.error('Scraping failed:', error.message);
+    
+    if (error.message.includes('timeout')) {
+      console.log('Suggestion: Try increasing timeout or check network');
+    } else if (error.message.includes('404')) {
+      console.log('Suggestion: Verify URL is correct');
+    } else if (error.message.includes('blocked')) {
+      console.log('Suggestion: Try with headless: false or adjust anti-bot settings');
+    }
+    
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
+})();
+```
+
 **Usage:**
 ```bash
 # Make executable
@@ -795,10 +419,8 @@ chmod +x scraper.js
 4. **Respect robots.txt** - Check site's scraping policy before bulk scraping
 5. **Use appropriate selectors** - Target main content areas to avoid navigation/footer noise
 6. **Clean up resources** - Always close browsers/pages in finally blocks
-7. **Limit concurrency** - Don't overwhelm servers with too many concurrent requests
-8. **Cache results** - Save scraped content to avoid re-scraping
-9. **Monitor rate limits** - Watch for 429 responses and implement backoff
-10. **Test selectors first** - Verify content extraction on a single page before batch processing
+7. **Cache results** - Save scraped content to avoid re-scraping
+8. **Test selectors first** - Verify content extraction on a single page before batch processing
 
 ## Troubleshooting
 

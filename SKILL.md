@@ -1,5 +1,5 @@
 ---
-name: playwright
+name: playwright-antibot
 description: Scrape web pages using Playwright, a browser automation framework that can bypass anti-bot protections and handle JavaScript-rendered content. The scraped content is converted to clean Markdown format for easy reading and processing. Use when encountering 404 or 403 errors with simple HTTP requests. Use when web pages require JavaScript rendering to display content. Use when websites have anti-bot/anti-scraping protections. Use when you need to preserve formatting of tables, code blocks, and lists. Use when scraping documentation sites, blogs, or technical articles. Use when the user explicitly asks to "scrape", "extract from webpage", or "get content from URL".
 allowed-tools: playwright, turndown, turndown-plugin-gfm, fs
 ---

@@ -285,40 +285,6 @@ await page.evaluate(() => {
 await page.waitForTimeout(2000);
 ```
 
-### Custom Content Selectors
-
-```javascript
-// Define custom selectors for specific sites
-const siteConfigs = {
-  'docs.coveo.com': {
-    contentSelector: '.documentation-content',
-    excludeSelectors: ['.sidebar', '.navigation', '.footer']
-  },
-  'developer.mozilla.org': {
-    contentSelector: 'article',
-    excludeSelectors: ['.document-toc', '.language-menu']
-  }
-};
-
-const domain = new URL(url).hostname;
-const config = siteConfigs[domain] || { contentSelector: 'article, main' };
-
-// Remove unwanted elements
-if (config.excludeSelectors) {
-  await page.evaluate((selectors) => {
-    selectors.forEach(selector => {
-      document.querySelectorAll(selector).forEach(el => el.remove());
-    });
-  }, config.excludeSelectors);
-}
-
-// Extract content
-const html = await page.evaluate((selector) => {
-  const element = document.querySelector(selector);
-  return element ? element.innerHTML : document.body.innerHTML;
-}, config.contentSelector);
-```
-
 ### Extracting Structured Data
 
 ```javascript
@@ -343,57 +309,6 @@ const codeBlocks = await page.evaluate(() => {
     code: block.innerText
   }));
 });
-```
-
-## Error Handling
-
-```javascript
-(async () => {
-  let browser;
-  try {
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    
-    // Set timeout handler
-    page.setDefaultTimeout(30000);
-    
-    // Handle navigation errors
-    page.on('response', response => {
-      if (response.status() >= 400) {
-        console.warn(`HTTP ${response.status()}: ${response.url()}`);
-      }
-    });
-    
-    await page.goto(url);
-    
-    // Check if content exists
-    const hasContent = await page.evaluate(() => {
-      return document.body.innerText.trim().length > 100;
-    });
-    
-    if (!hasContent) {
-      throw new Error('Page appears to be empty or blocked');
-    }
-    
-    // Continue with scraping...
-    
-  } catch (error) {
-    console.error('Scraping failed:', error.message);
-    
-    if (error.message.includes('timeout')) {
-      console.log('Suggestion: Try increasing timeout or check network');
-    } else if (error.message.includes('404')) {
-      console.log('Suggestion: Verify URL is correct');
-    } else if (error.message.includes('blocked')) {
-      console.log('Suggestion: Try with headless: false or adjust anti-bot settings');
-    }
-    
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-  }
-})();
 ```
 
 **Usage:**

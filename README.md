@@ -16,10 +16,15 @@ This will install:
 - Turndown-plugin-gfm (GitHub Flavored Markdown support)
 - Chromium browser binaries
 
+Alternatively, you can perform a **manual setup:**
+```bash
+npm install
+npx playwright install chromium
+npm test  # Verify installation
+```
+
 ## When to Use This Skill
-- When encountering 404 or 403 errors with simple HTTP requests
+- When websites block simple HTTP requests (e.g. 403/404 due to anti-bot or anti-scraping protections)
 - When web pages require JavaScript rendering to display content
-- When websites have anti-bot/anti-scraping protections
 - When you need to preserve formatting of tables, code blocks, and lists
 - When scraping documentation sites, blogs, or technical articles
-- When the user explicitly asks to "scrape", "extract from webpage", or "get content from URL"

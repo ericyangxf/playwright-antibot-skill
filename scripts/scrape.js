@@ -25,7 +25,7 @@ async function scrapeDocumentation(urls, outputDir = './scraped-docs', waitUntil
   });
 
   const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+    userAgent: 'Mozilla/5.0 (Macintosh; ARM Mac OS X 15_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     viewport: { width: 1920, height: 1080 }
   });
 
@@ -77,8 +77,8 @@ async function scrapeDocumentation(urls, outputDir = './scraped-docs', waitUntil
         }
       }
 
-      // Wait for content
-      await page.waitForSelector('article, main, .content', { timeout: 10000 });
+      // Wait for content (best-effort, fall back to document.body in evaluate)
+      await page.waitForSelector('article, main, .content', { timeout: 5000 }).catch(() => {});
 
       // Extract metadata and content
       const data = await page.evaluate(() => {
@@ -91,16 +91,20 @@ async function scrapeDocumentation(urls, outputDir = './scraped-docs', waitUntil
           if (contentElement) break;
         }
 
-        // Remove unwanted elements
+        // Clone target node and strip unwanted elements from the clone
+        const target = contentElement
+          ? contentElement.cloneNode(true)
+          : document.body.cloneNode(true);
+
         const unwantedSelectors = ['.sidebar', '.navigation', '.breadcrumb', '.footer', 'nav', '.toc'];
         unwantedSelectors.forEach(selector => {
-          document.querySelectorAll(selector).forEach(el => el.remove());
+          target.querySelectorAll(selector).forEach(el => el.remove());
         });
 
         return {
           title: document.title,
           url: window.location.href,
-          html: contentElement ? contentElement.innerHTML : document.body.innerHTML
+          html: target.innerHTML
         };
       });
 
@@ -118,8 +122,10 @@ async function scrapeDocumentation(urls, outputDir = './scraped-docs', waitUntil
 ${markdown}`;
 
       // Generate filename
-      const urlParts = new URL(url).pathname.split('/').filter(Boolean);
-      const filename = urlParts.slice(-2).join('-') + '.md';
+      const parsedUrl = new URL(url);
+      const urlParts = parsedUrl.pathname.split('/').filter(Boolean);
+      const pathPart = urlParts.length > 0 ? urlParts.slice(-2).join('-') : 'index';
+      const filename = parsedUrl.hostname + '-' + pathPart + '.md';
       const filepath = path.join(outputDir, filename);
 
       // Save file
@@ -135,7 +141,7 @@ ${markdown}`;
       });
 
       // Polite delay
-      await page.waitForTimeout(1000 + Math.random() * 2000);
+      await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
 
     } catch (error) {
       console.error(`✗ Failed: ${error.message}`);

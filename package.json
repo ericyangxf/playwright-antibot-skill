@@ -2,10 +2,11 @@
   "name": "playwright-scraper-skill",
   "version": "1.0.0",
   "description": "Web scraping skill using Playwright",
-  "main": "index.js",
+  "main": "scripts/scrape.js",
   "scripts": {
     "setup": "npm install && npx playwright install chromium",
-    "test": "node -e \"require('playwright'); console.log('✓ Playwright is available')\""
+    "test": "node -e \"require('playwright'); console.log('✓ Playwright is available')\"",
+    "scrape": "node scripts/scrape.js"
   },
   "keywords": ["playwright", "scraping", "automation"],
   "author": "",

@@ -174,6 +174,21 @@ ${markdown}`;
   return results;
 }
 
+function printUsage() {
+  console.log('Usage: node scripts/scrape.js [options] <url1> <url2> ...');
+  console.log('');
+  console.log('Options:');
+  console.log('  -o, --output-dir <path>    Output directory (default: ./scraped-docs)');
+  console.log('  -w, --wait-until <event>   Navigation wait strategy (default: load)');
+  console.log('                             Values: load, domcontentloaded, networkidle');
+  console.log('  -h, --help                 Show this help message');
+  console.log('');
+  console.log('Example:');
+  console.log('  node scripts/scrape.js https://docs.example.com/api');
+  console.log('  node scripts/scrape.js -o ./my-docs https://example.com/page1 https://example.com/page2');
+  console.log('  node scripts/scrape.js -w load https://example.com/spa-page');
+}
+
 // CLI
 if (require.main === module) {
   const args = process.argv.slice(2);
@@ -205,6 +220,9 @@ if (require.main === module) {
         console.error('Error: --wait-until requires a value argument');
         process.exit(1);
       }
+    } else if (args[i] === '--help' || args[i] === '-h') {
+      printUsage();
+      process.exit(0);
     } else if (args[i].startsWith('-')) {
       console.error(`Unknown flag: ${args[i]}`);
       process.exit(1);
@@ -214,17 +232,7 @@ if (require.main === module) {
   }
 
   if (urls.length === 0) {
-    console.log('Usage: node scripts/scrape.js [options] <url1> <url2> ...');
-    console.log('');
-    console.log('Options:');
-    console.log('  -o, --output-dir <path>    Output directory (default: ./scraped-docs)');
-    console.log('  -w, --wait-until <event>   Navigation wait strategy (default: load)');
-    console.log('                             Values: load, domcontentloaded, networkidle');
-    console.log('');
-    console.log('Example:');
-    console.log('  node scripts/scrape.js https://docs.example.com/api');
-    console.log('  node scripts/scrape.js -o ./my-docs https://example.com/page1 https://example.com/page2');
-    console.log('  node scripts/scrape.js -w networkidle https://example.com/spa-page');
+    printUsage();
     process.exit(1);
   }
 
